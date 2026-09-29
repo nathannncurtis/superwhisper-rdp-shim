@@ -71,8 +71,19 @@ final class Shim {
     /// "denied" long after the box is ticked. Only a fresh process sees the grant.
     /// launchd throttles respawns to ~10s, so this self-heals shortly after the tick.
     private func requireAccessibility() {
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
-        if AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary) { return }
+        if AXIsProcessTrusted() { return }
+
+        // Show the system dialog at most once, ever. Because launchd respawns us on
+        // a timer until the permission lands, prompting on every launch would put a
+        // dialog on screen every few seconds until the user gave in -- which is
+        // nagging, not asking. Ask once, then retry silently.
+        let askedBefore = UserDefaults.standard.bool(forKey: "HasPromptedForAccessibility")
+        if !askedBefore {
+            UserDefaults.standard.set(true, forKey: "HasPromptedForAccessibility")
+            let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+            _ = AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+            Log.warn("requested Accessibility permission (asking once; will retry silently)")
+        }
 
         Log.warn("no Accessibility permission yet -- exiting so launchd respawns us")
         Log.warn("System Settings > Privacy & Security > Accessibility -- add SuperwhisperRDPShim")

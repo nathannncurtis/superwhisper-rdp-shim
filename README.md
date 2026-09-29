@@ -78,13 +78,29 @@ Superwhisper pasting into any normal Mac app, behave exactly as before.
 Builds, installs to `~/Applications`, and registers a login agent.
 
 Then grant Accessibility once: **System Settings → Privacy & Security →
-Accessibility**, add `SuperwhisperRDPShim`. The agent exits and relaunches until
-the permission is there, so it starts working within ~10s of the tick.
+Accessibility**, add `SuperwhisperRDPShim`. The agent asks once, then retries
+silently every 30s until the permission is there.
 
-It must be a fresh process: `AXIsProcessTrusted()` caches its answer for the life
-of a process, so a running instance can never observe the grant. Note also that
-ad-hoc code signatures change on every build, which revokes the grant — expect to
-re-tick after rebuilding.
+Two things make that permission fiddlier than it looks, both handled:
+
+- **Only a fresh process can see the grant.** `AXIsProcessTrusted()` caches its
+  answer for the lifetime of a process, so a running instance polling for the
+  permission would report "denied" forever. The agent exits instead and lets
+  launchd respawn it, which is why it can ask exactly once and still pick the
+  grant up later without being relaunched by hand.
+- **The grant is bound to the code signature.** `build.sh` signs with the first
+  available codesigning identity, which keeps the designated requirement stable
+  across rebuilds. Falling back to ad-hoc signing works, but an ad-hoc designated
+  requirement is its cdhash — it changes on every build and silently revokes the
+  permission, forcing a re-approval each time.
+
+If the permission ever gets into a confused state, clear the record and let it ask
+again from scratch:
+
+```sh
+tccutil reset Accessibility com.nathan.swshim
+defaults delete com.nathan.swshim HasPromptedForAccessibility
+```
 
 Log: `~/Library/Logs/swshim.log`
 

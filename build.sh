@@ -12,6 +12,21 @@ cd "$(dirname "$0")"
 APP="SuperwhisperRDPShim.app"
 IDENT="com.nathan.swshim"
 
+# Sign with a real identity when one exists, falling back to ad-hoc.
+#
+# This matters more than it looks. TCC binds the Accessibility grant to the code
+# signature, and an ad-hoc signature's designated requirement is its cdhash --
+# which changes on every single build, silently revoking the permission and making
+# the user re-approve. A certificate-backed signature keeps the requirement stable
+# across rebuilds, so the grant is given once and stays given.
+SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+    | grep -oE '"[^"]*"' | tr -d '"' | head -1)"
+if [ -z "$SIGN_ID" ]; then
+    SIGN_ID="-"
+    echo "warning: no code-signing identity found; falling back to ad-hoc." >&2
+    echo "         the Accessibility grant will need re-approving after each build." >&2
+fi
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
@@ -54,7 +69,7 @@ DEVELOPER_DIR="$CLT" "$SWIFTC" -O -sdk "$SDK" \
     -framework Cocoa \
     -framework Carbon
 
-echo "signing..."
-codesign --force --sign - --identifier "$IDENT" "$APP"
+echo "signing as: $SIGN_ID"
+codesign --force --sign "$SIGN_ID" --identifier "$IDENT" "$APP"
 
 echo "built: $(pwd)/$APP"

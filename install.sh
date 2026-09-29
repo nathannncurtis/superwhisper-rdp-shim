@@ -34,6 +34,9 @@ cat > "$PLIST" <<PLISTEOF
     </array>
     <key>RunAtLoad</key>          <true/>
     <key>KeepAlive</key>          <true/>
+    <!-- Retry slowly while waiting for Accessibility. A fresh process is the only
+         thing that can observe the grant, but there is no reason to churn. -->
+    <key>ThrottleInterval</key>   <integer>30</integer>
     <key>StandardOutPath</key>    <string>$LOG</string>
     <key>StandardErrorPath</key>  <string>$LOG</string>
 </dict>
@@ -49,5 +52,5 @@ echo "One-time step: grant Accessibility permission."
 echo "  System Settings > Privacy & Security > Accessibility"
 echo "  Add: $DEST/$APP"
 echo
-echo "The agent is already running and will wait for that permission -- once you"
-echo "tick the box it starts working immediately, no relaunch needed."
+echo "The agent asks once, then retries silently every 30s. Tick the box and it"
+echo "picks the permission up on its own -- no relaunch needed."
