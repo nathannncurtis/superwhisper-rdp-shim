@@ -12,6 +12,15 @@ let remoteClientBundleIDs: Set<String> = [
 
 let superwhisperBundleID = "com.superduper.superwhisper"
 
+/// Human-readable names for the same targets, for the menu.
+let remoteClientNames: [String] = remoteClientBundleIDs.compactMap { bundleID in
+    guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+        return bundleID
+    }
+    return FileManager.default.displayName(atPath: url.path)
+        .replacingOccurrences(of: ".app", with: "")
+}.sorted()
+
 // MARK: - Shim
 
 final class Shim {
@@ -61,7 +70,6 @@ final class Shim {
             Log.info("watching for Superwhisper pastes into \(remoteClientBundleIDs.joined(separator: ", "))")
         }
         Log.info("superwhisper pid(s): \(superwhisperPIDs.isEmpty ? "none running" : superwhisperPIDs.map(String.init).joined(separator: ", "))")
-        CFRunLoopRun()
     }
 
     /// Exit if Accessibility isn't granted, and let launchd's KeepAlive respawn us.
@@ -308,4 +316,42 @@ final class Shim {
 // MARK: - Entry point
 
 setbuf(stdout, nil)
-Shim(probeOnly: CommandLine.arguments.contains("--probe")).start()
+
+/// Owns everything with a lifetime, and brings it up in the right order.
+///
+/// The status item in particular has to wait for `applicationDidFinishLaunching`.
+/// Creating one before AppKit has finished launching silently does nothing -- the
+/// call succeeds, no icon appears, and the process looks fine from the outside.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    private let probeOnly: Bool
+    private var shim: Shim?
+    private var menuBar: MenuBarController?
+
+    init(probeOnly: Bool) {
+        self.probeOnly = probeOnly
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let shim = Shim(probeOnly: probeOnly)
+        shim.start()
+        self.shim = shim
+
+        // Probe runs are throwaway diagnostic sessions from a terminal; they have
+        // no business adding an icon to the menu bar.
+        if !probeOnly {
+            menuBar = MenuBarController(targetNames: remoteClientNames)
+        }
+    }
+}
+
+// .accessory: a status-bar item and a settings panel, but no Dock tile and no
+// menu bar of our own. AppKit also owns the run loop, which the event tap needs.
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
+
+// Held at top level because NSApplication.delegate is a weak reference.
+let delegate = AppDelegate(probeOnly: CommandLine.arguments.contains("--probe"))
+app.delegate = delegate
+
+app.run()

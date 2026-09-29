@@ -27,13 +27,18 @@ enum Typist {
         CGKeyCode(kVK_Control), CGKeyCode(kVK_RightControl),
     ]
 
-    /// Per-character pause. Too fast and the client drops keys on its way to the
-    /// guest; too slow and long dictations crawl. 16ms is about one frame.
-    static var perCharDelay: useconds_t = {
-        let ms = UserDefaults.standard.integer(forKey: "TypeDelayMs")
-        let clamped = (ms >= 1 && ms <= 200) ? ms : 16
-        return useconds_t(clamped * 1000)
-    }()
+    /// Per-character pause, in microseconds. Too fast and the client drops keys on
+    /// their way to the guest; too slow and long dictations crawl. 16ms is about one
+    /// frame, and is the conservative default.
+    ///
+    /// Read fresh from preferences on each dictation rather than cached at launch,
+    /// so `defaults write com.nathan.swshim TypeDelayMs <n>` takes effect on the very
+    /// next thing you say -- no restart, nothing to reload. Tuning this is trial and
+    /// error against a live session, so it needs to be adjustable in the moment.
+    ///
+    static var perCharDelay: useconds_t {
+        useconds_t(Preferences.typeDelayMs * 1000)
+    }
 
     /// Type `raw` as key events. Returns the number of characters actually sent.
     @discardableResult
@@ -56,6 +61,11 @@ enum Typist {
 
         releaseModifiers(source)
 
+        // Snapshot the pace for this run. Re-reading it per character would cost a
+        // cfprefsd round trip per keystroke, and a delay that changed mid-sentence
+        // would be worse than one that changed between them.
+        let delay = perCharDelay
+
         var shiftHeld = false
         var sent = 0
 
@@ -64,18 +74,18 @@ enum Typist {
 
             // Hold Shift across consecutive capitals instead of tapping it per key.
             if stroke.shift != shiftHeld {
-                setShift(stroke.shift, source)
+                setShift(stroke.shift, source, delay: delay)
                 shiftHeld = stroke.shift
             }
 
             tap(stroke.keyCode, source, shifted: shiftHeld)
             sent += 1
-            usleep(perCharDelay)
+            usleep(delay)
         }
 
-        if shiftHeld { setShift(false, source) }
+        if shiftHeld { setShift(false, source, delay: delay) }
 
-        Log.info("typed \(sent) char(s)")
+        Log.info("typed \(sent) char(s) at \(delay / 1000)ms/char")
         return sent
     }
 
@@ -106,13 +116,13 @@ enum Typist {
     /// key fired, and assigning `.flags` throws those bits away -- which is exactly
     /// the mistake that makes scancode clients forward a bare letter. Setting
     /// `.type` is a no-op. Leave both alone.
-    private static func setShift(_ down: Bool, _ source: CGEventSource) {
+    private static func setShift(_ down: Bool, _ source: CGEventSource, delay: useconds_t) {
         guard let event = CGEvent(keyboardEventSource: source,
                                   virtualKey: CGKeyCode(kVK_Shift),
                                   keyDown: down) else { return }
         event.setIntegerValueField(.eventSourceUserData, value: magic)
         event.post(tap: .cghidEventTap)
-        usleep(perCharDelay)
+        usleep(delay)
     }
 
     /// Force every modifier up, so we start from a known-clean keyboard state.

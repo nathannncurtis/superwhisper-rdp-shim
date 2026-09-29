@@ -63,8 +63,11 @@ echo "compiling..."
 DEVELOPER_DIR="$CLT" "$SWIFTC" -O -sdk "$SDK" \
     -o "$APP/Contents/MacOS/SuperwhisperRDPShim" \
     Sources/Log.swift \
+    Sources/Preferences.swift \
     Sources/AnsiKeymap.swift \
     Sources/Typist.swift \
+    Sources/SettingsWindow.swift \
+    Sources/MenuBar.swift \
     Sources/main.swift \
     -framework Cocoa \
     -framework Carbon

@@ -104,16 +104,45 @@ defaults delete com.nathan.swshim HasPromptedForAccessibility
 
 Log: `~/Library/Logs/swshim.log`
 
+## Menu bar
+
+The shim has no window and nothing to show while idle, so it lives in the menu bar
+— mostly to make an otherwise invisible background process legible:
+
+```
+  Watching Windows App          ← or "Superwhisper isn't running"
+  Typing at 16 ms/char (default)
+  ──────────────────────────
+  Typing Speed…                 ⌘,
+  Open Log
+  ──────────────────────────
+  Quit
+```
+
+**Quit** unloads the login agent rather than just exiting, because exiting would be
+a lie — launchd's `KeepAlive` would restart the process within seconds and the icon
+would reappear. It comes back at next login.
+
+If the icon doesn't appear, check whether a menu-bar manager (Ice, Bartender) has
+collapsed it into a hidden section. The log says which case you're in: it records
+`menu bar item created` on success.
+
 ## Configuration
 
-Typing pace, in milliseconds per character (default 16, clamped to 1–200):
+Typing pace, in milliseconds per character (default 16, clamped to 1–200). Either
+**Typing Speed…** in the menu bar, or:
 
 ```sh
 defaults write com.nathan.swshim TypeDelayMs 8
 ```
 
 Lower is faster; too low and the client starts dropping keys on the way to the
-guest.
+guest. Somewhere in the single digits is usually where that begins, and it depends
+on the connection — worth finding by feel rather than picking a number.
+
+Either route takes effect on the **next dictation**, with no restart. The value is
+read fresh each time through CFPreferences rather than cached at launch, precisely
+so it can be tuned against a live session.
 
 To cover another remote client, add its bundle identifier to
 `remoteClientBundleIDs` in `Sources/main.swift` and rebuild. RemotePC is
