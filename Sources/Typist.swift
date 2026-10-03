@@ -66,6 +66,17 @@ enum Typist {
         // would be worse than one that changed between them.
         let delay = perCharDelay
 
+        // Modifier transitions get their own floor, independent of typing pace.
+        //
+        // A Shift press and the keystroke it modifies are two separate events that
+        // the remote client forwards to the guest, and the guest decides case from
+        // the modifier state it has *received so far*. At a 2ms pace the release can
+        // still be in flight while later characters land, so Shift reads as held and
+        // a stretch of ordinary text arrives in capitals -- which looks like
+        // shouting, not a bug. Giving transitions room to settle fixes it, and costs
+        // nothing on text without capitals.
+        let settle = max(delay, 12_000)
+
         var shiftHeld = false
         var sent = 0
 
@@ -74,7 +85,7 @@ enum Typist {
 
             // Hold Shift across consecutive capitals instead of tapping it per key.
             if stroke.shift != shiftHeld {
-                setShift(stroke.shift, source, delay: delay)
+                setShift(stroke.shift, source, delay: settle)
                 shiftHeld = stroke.shift
             }
 
@@ -83,7 +94,12 @@ enum Typist {
             usleep(delay)
         }
 
-        if shiftHeld { setShift(false, source, delay: delay) }
+        if shiftHeld { setShift(false, source, delay: settle) }
+
+        // Belt and braces: whatever happened above, leave no modifier held. A stuck
+        // Shift would otherwise outlive this run and capitalise whatever the user
+        // types next, by hand, in the guest.
+        releaseModifiers(source)
 
         Log.info("typed \(sent) char(s) at \(delay / 1000)ms/char")
         return sent

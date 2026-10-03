@@ -73,9 +73,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let running = !NSWorkspace.shared.runningApplications
             .filter { $0.bundleIdentifier == superwhisperBundleID }
             .isEmpty
-        statusLine.title = running
-            ? "Watching \(targetNames.joined(separator: ", "))"
-            : "Superwhisper isn’t running"
+        // Superwhisper is no longer the only sender worth catching -- any tool that
+        // pastes into a remote session gets the same treatment -- so its absence is
+        // information, not a fault.
+        statusLine.title = "Watching \(targetNames.joined(separator: ", "))"
+            + (running ? "" : " · Superwhisper not running")
 
         let ms = Preferences.typeDelayMs
         speedLine.title = "Typing at \(ms) ms/char"

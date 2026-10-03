@@ -67,9 +67,9 @@ final class Shim {
         if probeOnly {
             Log.info("PROBE MODE -- logging only, nothing will be suppressed or typed")
         } else {
-            Log.info("watching for Superwhisper pastes into \(remoteClientBundleIDs.joined(separator: ", "))")
+            Log.info("watching for dictation pastes into \(remoteClientBundleIDs.joined(separator: ", "))")
         }
-        Log.info("superwhisper pid(s): \(superwhisperPIDs.isEmpty ? "none running" : superwhisperPIDs.map(String.init).joined(separator: ", "))")
+        Log.info("superwhisper pid(s): \(superwhisperPIDs.isEmpty ? "none running (any sender is still intercepted)" : superwhisperPIDs.map(String.init).joined(separator: ", "))")
     }
 
     /// Exit if Accessibility isn't granted, and let launchd's KeepAlive respawn us.
@@ -239,7 +239,11 @@ final class Shim {
             return nil
         }
 
-        guard event.flags.contains(.maskCommand) else {
+        // Cmd+V or Ctrl+V. Which one a dictation tool sends varies -- Superwhisper
+        // sends Cmd+V, Handy sends Ctrl+V -- and neither works in a remote session,
+        // so both are ours to intercept.
+        let isPasteChord = event.flags.contains(.maskCommand) || event.flags.contains(.maskControl)
+        guard isPasteChord else {
             return passThrough
         }
 
